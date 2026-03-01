@@ -114,7 +114,7 @@ Note: `pnpm openclaw ...` runs TypeScript directly (via `tsx`). `pnpm build` pro
 - `src/cli`: CLI entrypoints and command wiring (`openclaw ...`).
 - `src/commands`: command implementations and command-level orchestration.
 - `src/gateway`: local control plane (HTTP/WS), auth, and runtime coordination.
-- `src/channels` + `src/{telegram,discord,slack,signal,imessage,web}` + `src/routing`: built-in channel adapters and cross-channel routing policy.
+- `src/channels` + `src/{telegram,discord,slack,signal,imessage,web}` + `src/provider-web.ts` + `src/routing`: built-in channel adapters, web provider wiring, and cross-channel routing policy.
 - `extensions/*`: extension channels/integrations (for example Microsoft Teams, Matrix, Zalo, Zalo Personal, and voice-call).
 - `src/agents`: agent execution, tool orchestration, model selection, and session behavior.
 - `src/infra`: shared low-level utilities used across the codebase.
