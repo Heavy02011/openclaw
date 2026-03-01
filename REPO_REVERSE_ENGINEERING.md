@@ -1,6 +1,6 @@
 # OpenClaw — Reverse Engineering & Coding Cheat Sheet
 
-> **Repository:** [openclaw/openclaw](https://github.com/openclaw/openclaw)
+> **Repository:** [Heavy02011/openclaw](https://github.com/Heavy02011/openclaw)
 > **Primary Language:** TypeScript (ESM, strict mode)
 > **Runtime:** Node.js 22+ (Bun also supported for dev/scripts)
 > **Category:** Multi-channel AI gateway with extensible messaging integrations
@@ -19,7 +19,7 @@
 4. **Agent core** — `src/agents/` with model integration, system prompts, tool execution, session management.
 5. **Gateway server** — `src/gateway/` HTTP server, method handlers, channel routing, plugin loading.
 6. **Additional channels** — Telegram (`grammy`), Discord, Slack, Signal, iMessage, LINE added iteratively.
-7. **Plugin SDK & extensions** — `src/plugin-sdk/`, `extensions/` workspace packages for 35+ integrations (Matrix, MS Teams, Zalo, Google Chat, etc.).
+7. **Plugin SDK & extensions** — `src/plugin-sdk/`, `extensions/` workspace packages for 40+ integrations (Matrix, MS Teams, Zalo, Google Chat, etc.).
 8. **Platform apps** — `apps/macos/`, `apps/ios/`, `apps/android/` — native wrappers came after the core was stable.
 9. **UI layer** — `ui/` (Canvas/web interface) for browser-based interaction.
 10. **Docs & i18n** — `docs/` (Mintlify), `docs/zh-CN/`, `docs/ja-JP/` localization pipeline.
@@ -72,6 +72,7 @@ pnpm build && pnpm test
 ```
 
 **Dependency installation order rationale:**
+
 1. TypeScript + build tools (tsdown) — need to compile before anything runs
 2. CLI framework (Commander + clack) — CLI is the primary interface
 3. Validation (Zod) — config validation is critical early
@@ -110,7 +111,7 @@ src/
 ├── web/           # WhatsApp Web (Baileys)
 ├── line/          # LINE channel
 └── tui/           # Terminal UI
-extensions/        # 35+ plugin packages (workspace packages)
+extensions/        # 40+ plugin packages (workspace packages)
 apps/              # Platform apps (macOS, iOS, Android)
 ui/                # Web UI (Canvas/browser interface)
 docs/              # Mintlify documentation
@@ -135,6 +136,7 @@ Infra (src/infra/) ←── Config (src/config/) ←── Security (src/securi
 ```
 
 **Boundaries:**
+
 - Plugin SDK defines the public API surface — extensions depend only on `openclaw/plugin-sdk`
 - Channels are independently loadable (lazy dynamic imports)
 - Gateway orchestrates everything but doesn't contain business logic
@@ -222,10 +224,10 @@ export function createOutboundSendDeps(deps: CliDeps): OutboundSendDeps {
 // STOLEN FROM: src/plugins/types.ts
 
 export type ChannelPlugin = {
-  auth?: ChannelAuthAdapter;        // Optional: authentication
-  messaging?: ChannelMessagingAdapter;  // Optional: message handling
-  outbound?: ChannelOutboundAdapter;    // Optional: sending messages
-  status?: ChannelStatusAdapter;        // Optional: health/status
+  auth?: ChannelAuthAdapter; // Optional: authentication
+  messaging?: ChannelMessagingAdapter; // Optional: message handling
+  outbound?: ChannelOutboundAdapter; // Optional: sending messages
+  status?: ChannelStatusAdapter; // Optional: health/status
   // ... 20+ optional adapter slots
 };
 ```
@@ -280,7 +282,9 @@ export const defaultRuntime: RuntimeEnv = {
 };
 
 // Test-friendly: doesn't call process.exit
-export function createNonExitingRuntime(): RuntimeEnv { /* ... */ }
+export function createNonExitingRuntime(): RuntimeEnv {
+  /* ... */
+}
 ```
 
 #### Pattern: Structured Error Hierarchy with Failover
@@ -304,7 +308,9 @@ class FailoverError extends Error {
 
 // Status code → reason mapping
 // 402 → "billing", 429 → "rate_limit", 401/403 → "auth", 408 → "timeout"
-function resolveFailoverReasonFromError(err: unknown): FailoverReason { /* ... */ }
+function resolveFailoverReasonFromError(err: unknown): FailoverReason {
+  /* ... */
+}
 ```
 
 #### Pattern: Child Logger Strategy
@@ -323,7 +329,7 @@ const logDiscovery = log.child("discovery");
 const logAuth = log.child("auth");
 
 // Each child logger inherits parent config but can be filtered independently
-logCanvas.info("Canvas initialized");  // → [gateway:canvas] Canvas initialized
+logCanvas.info("Canvas initialized"); // → [gateway:canvas] Canvas initialized
 ```
 
 ### 2.3 API & Interface Design
@@ -354,16 +360,16 @@ logCanvas.info("Canvas initialized");  // → [gateway:canvas] Canvas initialize
 
 #### Language Features
 
-| Technique | Usage | Example Location |
-|-----------|-------|-----------------|
-| **Dynamic imports** | Lazy-load channels/providers on demand | `src/cli/deps.ts` |
-| **Discriminated unions** | `FailoverReason` type for error classification | `src/agents/failover-error.ts` |
-| **Type-only imports** | `import type { X }` for zero-runtime-cost types | Throughout codebase |
-| **Zod schemas** | Runtime validation + TypeScript type inference | `src/config/` |
-| **ESM with .js extensions** | Cross-package imports use `.js` even for `.ts` files | All imports |
-| **Spread composition** | Build objects by spreading base + overrides | `src/runtime.ts` |
-| **Optional chaining patterns** | 20+ optional adapter slots in plugin types | `src/plugins/types.ts` |
-| **Async factories** | `createDefaultDeps()` returns async function wrappers | `src/cli/deps.ts` |
+| Technique                      | Usage                                                 | Example Location               |
+| ------------------------------ | ----------------------------------------------------- | ------------------------------ |
+| **Dynamic imports**            | Lazy-load channels/providers on demand                | `src/cli/deps.ts`              |
+| **Discriminated unions**       | `FailoverReason` type for error classification        | `src/agents/failover-error.ts` |
+| **Type-only imports**          | `import type { X }` for zero-runtime-cost types       | Throughout codebase            |
+| **Zod schemas**                | Runtime validation + TypeScript type inference        | `src/config/`                  |
+| **ESM with .js extensions**    | Cross-package imports use `.js` even for `.ts` files  | All imports                    |
+| **Spread composition**         | Build objects by spreading base + overrides           | `src/runtime.ts`               |
+| **Optional chaining patterns** | 20+ optional adapter slots in plugin types            | `src/plugins/types.ts`         |
+| **Async factories**            | `createDefaultDeps()` returns async function wrappers | `src/cli/deps.ts`              |
 
 #### Standard Library Usage
 
@@ -374,21 +380,21 @@ logCanvas.info("Canvas initialized");  // → [gateway:canvas] Canvas initialize
 
 #### Third-Party Library Patterns
 
-| Library | Pattern | Purpose |
-|---------|---------|---------|
-| **Commander** | Builder composition | CLI program construction |
-| **Zod** | Schema-first validation | Config + API input validation |
-| **tslog** | Child logger strategy | Per-subsystem logging |
-| **Express** | Method-based RPC | Gateway HTTP server |
-| **grammy** | Bot framework adapter | Telegram integration |
-| **@slack/bolt** | Event-driven adapter | Slack integration |
-| **Baileys** | WhatsApp Web protocol | WhatsApp channel |
-| **Sharp** | Image pipeline | Media processing |
-| **Vitest** | Forks pool isolation | Test execution |
+| Library         | Pattern                 | Purpose                       |
+| --------------- | ----------------------- | ----------------------------- |
+| **Commander**   | Builder composition     | CLI program construction      |
+| **Zod**         | Schema-first validation | Config + API input validation |
+| **tslog**       | Child logger strategy   | Per-subsystem logging         |
+| **Express**     | Method-based RPC        | Gateway HTTP server           |
+| **grammy**      | Bot framework adapter   | Telegram integration          |
+| **@slack/bolt** | Event-driven adapter    | Slack integration             |
+| **Baileys**     | WhatsApp Web protocol   | WhatsApp channel              |
+| **Sharp**       | Image pipeline          | Media processing              |
+| **Vitest**      | Forks pool isolation    | Test execution                |
 
 #### ⭐ Performance Optimizations
 
-- **Lazy dynamic imports:** Channels loaded only when first message arrives — startup stays fast even with 35+ channels
+- **Lazy dynamic imports:** Channels loaded only when first message arrives — startup stays fast even with 40+ channels
 - **In-memory caching with TTL:** `DedupeCache`, `DirectoryCache<T>` with configurable max size and TTL
 - **Forks pool testing:** Vitest uses process isolation to prevent env pollution between tests
 - **Pruning strategies:** Agent run cache, cost usage cache pruned periodically (not on every access)
@@ -408,9 +414,9 @@ logCanvas.info("Canvas initialized");  // → [gateway:canvas] Canvas initialize
 // vitest.config.ts highlights
 export default defineConfig({
   test: {
-    pool: "forks",                    // Process isolation
-    poolOptions: { forks: { maxForks: 16 } },  // Parallel (2-3 in CI)
-    testTimeout: 120_000,             // 2 min default
+    pool: "forks", // Process isolation
+    poolOptions: { forks: { maxForks: 16 } }, // Parallel (2-3 in CI)
+    testTimeout: 120_000, // 2 min default
     hookTimeout: isWindows ? 180_000 : undefined,
     coverage: {
       provider: "v8",
@@ -458,13 +464,13 @@ function createMockPluginRegistry() {
 
 #### Test Coverage
 
-| Type | Scope | Trigger |
-|------|-------|---------|
-| **Unit** | `pnpm test` | Every PR, colocated tests |
-| **E2E** | `pnpm test:e2e` | Specific workflows |
-| **Live** | `CLAWDBOT_LIVE_TEST=1 pnpm test:live` | Manual, real API keys |
-| **Docker** | `pnpm test:docker:live-models` | Integration with containers |
-| **Install smoke** | `pnpm test:install:smoke` | Pre-release validation |
+| Type              | Scope                                 | Trigger                     |
+| ----------------- | ------------------------------------- | --------------------------- |
+| **Unit**          | `pnpm test`                           | Every PR, colocated tests   |
+| **E2E**           | `pnpm test:e2e`                       | Specific workflows          |
+| **Live**          | `CLAWDBOT_LIVE_TEST=1 pnpm test:live` | Manual, real API keys       |
+| **Docker**        | `pnpm test:docker:live-models`        | Integration with containers |
+| **Install smoke** | `pnpm test:install:smoke`             | Pre-release validation      |
 
 ### 3.3 LLM/AI Integration Patterns
 
@@ -660,7 +666,9 @@ const logCanvas = log.getSubLogger({ name: "canvas" });
 const logAuth = log.getSubLogger({ name: "auth" });
 
 // Pluggable transports for file/remote logging
-function registerLogTransport(transport: LogTransport) { /* ... */ }
+function registerLogTransport(transport: LogTransport) {
+  /* ... */
+}
 ```
 
 ### 🧱 Core Code Patterns
@@ -791,9 +799,9 @@ class RateLimiter {
 export type Plugin = {
   name: string;
   version: string;
-  auth?: AuthAdapter;       // Optional capability
-  messaging?: MsgAdapter;   // Optional capability
-  status?: StatusAdapter;   // Optional capability
+  auth?: AuthAdapter; // Optional capability
+  messaging?: MsgAdapter; // Optional capability
+  status?: StatusAdapter; // Optional capability
 };
 
 // Loader checks which adapters exist
@@ -828,9 +836,7 @@ describe("HookRunner", () => {
 
     await runHook(registry, { event: "test", payload: { id: 1 } });
 
-    expect(handler).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "test" }),
-    );
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ event: "test" }));
   });
 });
 ```
@@ -886,8 +892,8 @@ services:
   gateway:
     build: .
     ports:
-      - "18789:18789"   # Gateway
-      - "18790:18790"   # Bridge
+      - "18789:18789" # Gateway
+      - "18790:18790" # Bridge
     environment:
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -923,12 +929,15 @@ type Status = z.infer<typeof Status>;
 ```typescript
 // Dynamic import for optional heavy dependencies
 const sharp = await import("sharp").catch(() => null);
-if (!sharp) { console.warn("sharp not available"); return; }
+if (!sharp) {
+  console.warn("sharp not available");
+  return;
+}
 ```
 
 ```typescript
 // ESM .js extension imports (TypeScript + ESM pattern)
-import { utils } from "../infra/utils.js";  // .js even for .ts files
+import { utils } from "../infra/utils.js"; // .js even for .ts files
 ```
 
 ```typescript
@@ -944,26 +953,28 @@ expect(result).toEqual(expect.objectContaining({ status: "ok" }));
 ```typescript
 // File lock for concurrent access safety
 import { withFileLock } from "../infra/file-lock.js";
-await withFileLock(lockPath, async () => { /* critical section */ });
+await withFileLock(lockPath, async () => {
+  /* critical section */
+});
 ```
 
 ### 🚫 Anti-Patterns Avoided
 
-| Anti-Pattern | What OpenClaw Does Instead |
-|-------------|--------------------------|
-| **God classes** | Composition via factory functions; no class inheritance hierarchies |
-| **Eager loading everything** | Lazy dynamic imports — channels loaded on demand |
-| **`any` types** | Strict TypeScript with Zod runtime validation |
-| **Singleton config** | Factory-created config with snapshot caching and migration |
-| **Console.log debugging** | Structured tslog with child loggers, transports, and subsystem filtering |
-| **Hardcoded colors** | Shared palette (`src/terminal/palette.ts`) — Lobster palette with semantic names |
-| **Monolithic test suite** | Forks pool isolation + separate suites (unit/e2e/live/docker) |
-| **Re-export wrapper files** | Direct imports from source modules (anti-redundancy rule) |
-| **Class-based DI containers** | Plain function factories with typed objects |
-| **Global mutable state** | `RuntimeEnv` type allows swapping behavior for testing |
-| **Unvalidated config** | Zod schemas at every config boundary |
-| **Flat error strings** | `FailoverError` with semantic reason + provider + status metadata |
-| **Manual spinners/progress** | Centralized `src/cli/progress.ts` with osc-progress + clack |
+| Anti-Pattern                  | What OpenClaw Does Instead                                                       |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| **God classes**               | Composition via factory functions; no class inheritance hierarchies              |
+| **Eager loading everything**  | Lazy dynamic imports — channels loaded on demand                                 |
+| **`any` types**               | Strict TypeScript with Zod runtime validation                                    |
+| **Singleton config**          | Factory-created config with snapshot caching and migration                       |
+| **Console.log debugging**     | Structured tslog with child loggers, transports, and subsystem filtering         |
+| **Hardcoded colors**          | Shared palette (`src/terminal/palette.ts`) — Lobster palette with semantic names |
+| **Monolithic test suite**     | Forks pool isolation + separate suites (unit/e2e/live/docker)                    |
+| **Re-export wrapper files**   | Direct imports from source modules (anti-redundancy rule)                        |
+| **Class-based DI containers** | Plain function factories with typed objects                                      |
+| **Global mutable state**      | `RuntimeEnv` type allows swapping behavior for testing                           |
+| **Unvalidated config**        | Zod schemas at every config boundary                                             |
+| **Flat error strings**        | `FailoverError` with semantic reason + provider + status metadata                |
+| **Manual spinners/progress**  | Centralized `src/cli/progress.ts` with osc-progress + clack                      |
 
 ---
 
@@ -973,45 +984,45 @@ await withFileLock(lockPath, async () => { /* critical section */ });
 
 ### 1. Immediate Wins — Adopt Today
 
-| Technique | Why It Matters |
-|-----------|---------------|
-| **Zod for config validation** | Eliminates an entire class of runtime errors. `z.infer<>` means zero type duplication. |
-| **`vi.fn()` + `expect.objectContaining()`** | Makes tests resilient to payload shape changes — test what matters, ignore the rest. |
-| **ESM with `.js` extensions** | The correct way to do TypeScript + ESM. Avoids resolution headaches. |
-| **Child loggers** | `log.child("subsystem")` gives you free log filtering without any framework. |
-| **Shared color palette** | One file (`palette.ts`) prevents hardcoded ANSI codes scattered everywhere. |
+| Technique                                   | Why It Matters                                                                         |
+| ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Zod for config validation**               | Eliminates an entire class of runtime errors. `z.infer<>` means zero type duplication. |
+| **`vi.fn()` + `expect.objectContaining()`** | Makes tests resilient to payload shape changes — test what matters, ignore the rest.   |
+| **ESM with `.js` extensions**               | The correct way to do TypeScript + ESM. Avoids resolution headaches.                   |
+| **Child loggers**                           | `log.child("subsystem")` gives you free log filtering without any framework.           |
+| **Shared color palette**                    | One file (`palette.ts`) prevents hardcoded ANSI codes scattered everywhere.            |
 
 ### 2. This Week — Study & Practice
 
-| Technique | Why It Matters |
-|-----------|---------------|
-| **Factory + lazy loading DI** | The `createDefaultDeps()` pattern is universally useful for any project with optional integrations. Practice by refactoring an existing project to use lazy imports. |
-| **Plugin adapter composition** | Understanding optional interface slots unlocks extensible architecture. Build a small plugin system with 3 adapters. |
-| **Semantic error classification** | `FailoverError` pattern transforms error handling from "log and crash" to "classify and recover." Implement for any project calling external APIs. |
-| **In-memory TTL cache** | Replace ad-hoc `Map` caching with a proper TTL cache. Study the `DedupeCache` pattern. |
+| Technique                         | Why It Matters                                                                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Factory + lazy loading DI**     | The `createDefaultDeps()` pattern is universally useful for any project with optional integrations. Practice by refactoring an existing project to use lazy imports. |
+| **Plugin adapter composition**    | Understanding optional interface slots unlocks extensible architecture. Build a small plugin system with 3 adapters.                                                 |
+| **Semantic error classification** | `FailoverError` pattern transforms error handling from "log and crash" to "classify and recover." Implement for any project calling external APIs.                   |
+| **In-memory TTL cache**           | Replace ad-hoc `Map` caching with a proper TTL cache. Study the `DedupeCache` pattern.                                                                               |
 
 ### 3. Deep Dives Needed
 
-| Concept | Why It Matters | Time Investment |
-|---------|---------------|-----------------|
-| **Dynamic imports & code splitting** | Core to OpenClaw's fast startup. Understanding ESM module loading, top-level await, and circular dependency avoidance. | 2-3 hours |
-| **Streaming architecture** | Chunk aggregation, paragraph-based soft streaming, and block-reply flushing are advanced patterns for real-time AI delivery. | 4-6 hours |
-| **Workspace monorepo management** | pnpm workspaces with 35+ extension packages. Understanding `workspace:*` protocol, hoisting, and plugin isolation. | 3-4 hours |
-| **Security audit patterns** | Automated checksum verification, permission auditing, and dangerous tool policies. Study `src/security/` thoroughly. | 2-3 hours |
+| Concept                              | Why It Matters                                                                                                               | Time Investment |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Dynamic imports & code splitting** | Core to OpenClaw's fast startup. Understanding ESM module loading, top-level await, and circular dependency avoidance.       | 2-3 hours       |
+| **Streaming architecture**           | Chunk aggregation, paragraph-based soft streaming, and block-reply flushing are advanced patterns for real-time AI delivery. | 4-6 hours       |
+| **Workspace monorepo management**    | pnpm workspaces with 40+ extension packages. Understanding `workspace:*` protocol, hoisting, and plugin isolation.           | 3-4 hours       |
+| **Security audit patterns**          | Automated checksum verification, permission auditing, and dangerous tool policies. Study `src/security/` thoroughly.         | 2-3 hours       |
 
 ### 4. Recommended Resources
 
-| Resource | Relevance |
-|----------|-----------|
+| Resource                                                                           | Relevance                                                   |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | [TypeScript ESM Guide](https://www.typescriptlang.org/docs/handbook/esm-node.html) | Understanding `.js` extension imports and module resolution |
-| [Zod Documentation](https://zod.dev/) | Config validation patterns used throughout OpenClaw |
-| [Vitest Documentation](https://vitest.dev/) | Testing framework with forks pool, coverage thresholds |
-| [pnpm Workspaces](https://pnpm.io/workspaces) | Monorepo management for the extensions architecture |
-| [Commander.js](https://github.com/tj/commander.js) | CLI framework patterns (builder composition) |
-| [tslog](https://tslog.js.org/) | Structured logging with child loggers and transports |
-| [Node.js ESM Loaders](https://nodejs.org/api/esm.html) | Deep understanding of dynamic imports and lazy loading |
-| [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) | Rust-based linting (faster alternative to ESLint) |
+| [Zod Documentation](https://zod.dev/)                                              | Config validation patterns used throughout OpenClaw         |
+| [Vitest Documentation](https://vitest.dev/)                                        | Testing framework with forks pool, coverage thresholds      |
+| [pnpm Workspaces](https://pnpm.io/workspaces)                                      | Monorepo management for the extensions architecture         |
+| [Commander.js](https://github.com/tj/commander.js)                                 | CLI framework patterns (builder composition)                |
+| [tslog](https://tslog.js.org/)                                                     | Structured logging with child loggers and transports        |
+| [Node.js ESM Loaders](https://nodejs.org/api/esm.html)                             | Deep understanding of dynamic imports and lazy loading      |
+| [Oxlint](https://oxc.rs/docs/guide/usage/linter.html)                              | Rust-based linting (faster alternative to ESLint)           |
 
 ---
 
-> **Generated:** 2026-02-17 | **Source:** Static analysis of the openclaw/openclaw repository
+> **Generated:** 2026-03-01 | **Source:** Static analysis of the Heavy02011/openclaw repository
