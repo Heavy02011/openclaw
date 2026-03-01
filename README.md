@@ -109,6 +109,19 @@ pnpm gateway:watch
 
 Note: `pnpm openclaw ...` runs TypeScript directly (via `tsx`). `pnpm build` produces `dist/` for running via Node / the packaged `openclaw` binary.
 
+## Source intent (quick map)
+
+- `src/cli`: CLI entrypoints and command wiring (`openclaw ...`).
+- `src/commands`: command implementations and command-level orchestration.
+- `src/gateway`: local control plane (HTTP/WS), auth, and runtime coordination.
+- `src/channels`: shared channel abstractions.
+- `src/{telegram,discord,slack,signal,imessage,web}` + `src/provider-web.ts`: built-in channel adapters and web provider wiring.
+- `src/routing`: cross-channel routing policy.
+- `extensions/*`: extension channels/integrations (for example Microsoft Teams, Matrix, Zalo, Zalo Personal, and voice-call).
+- `src/agents`: agent execution, tool orchestration, model selection, and session behavior.
+- `src/infra`: shared low-level utilities used across the codebase.
+- `src/media`: media ingestion/normalization pipelines for files, images, audio, and video.
+
 ## Security defaults (DM access)
 
 OpenClaw connects to real messaging surfaces. Treat inbound DMs as **untrusted input**.
