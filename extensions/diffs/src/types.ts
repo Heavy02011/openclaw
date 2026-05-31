@@ -1,27 +1,46 @@
 import type { FileContents, FileDiffMetadata, SupportedLanguages } from "@pierre/diffs";
 
 export const DIFF_LAYOUTS = ["unified", "split"] as const;
-export const DIFF_MODES = ["view", "image", "both"] as const;
+export const DIFF_MODES = ["view", "image", "file", "both"] as const;
 export const DIFF_THEMES = ["light", "dark"] as const;
+export const DIFF_INDICATORS = ["bars", "classic", "none"] as const;
+export const DIFF_IMAGE_QUALITY_PRESETS = ["standard", "hq", "print"] as const;
+export const DIFF_OUTPUT_FORMATS = ["png", "pdf"] as const;
 
 export type DiffLayout = (typeof DIFF_LAYOUTS)[number];
 export type DiffMode = (typeof DIFF_MODES)[number];
 export type DiffTheme = (typeof DIFF_THEMES)[number];
+export type DiffIndicators = (typeof DIFF_INDICATORS)[number];
+export type DiffImageQualityPreset = (typeof DIFF_IMAGE_QUALITY_PRESETS)[number];
+export type DiffOutputFormat = (typeof DIFF_OUTPUT_FORMATS)[number];
+export type DiffRenderTarget = "viewer" | "image" | "both";
 
-export type DiffPresentationDefaults = {
+type DiffPresentationDefaults = {
   fontFamily: string;
   fontSize: number;
+  lineSpacing: number;
   layout: DiffLayout;
+  showLineNumbers: boolean;
+  diffIndicators: DiffIndicators;
   wordWrap: boolean;
   background: boolean;
   theme: DiffTheme;
 };
 
-export type DiffToolDefaults = DiffPresentationDefaults & {
-  mode: DiffMode;
+export type DiffFileDefaults = {
+  fileFormat: DiffOutputFormat;
+  fileQuality: DiffImageQualityPreset;
+  fileScale: number;
+  fileMaxWidth: number;
 };
 
-export type BeforeAfterDiffInput = {
+export type DiffToolDefaults = DiffPresentationDefaults &
+  DiffFileDefaults & {
+    mode: DiffMode;
+    ttlSeconds: number;
+  };
+
+type BeforeAfterDiffInput = {
   kind: "before_after";
   before: string;
   after: string;
@@ -30,7 +49,7 @@ export type BeforeAfterDiffInput = {
   title?: string;
 };
 
-export type PatchDiffInput = {
+type PatchDiffInput = {
   kind: "patch";
   patch: string;
   title?: string;
@@ -40,7 +59,15 @@ export type DiffInput = BeforeAfterDiffInput | PatchDiffInput;
 
 export type DiffRenderOptions = {
   presentation: DiffPresentationDefaults;
+  image: {
+    format: DiffOutputFormat;
+    qualityPreset: DiffImageQualityPreset;
+    scale: number;
+    maxWidth: number;
+    maxPixels: number;
+  };
   expandUnchanged: boolean;
+  languagePackAvailable?: boolean;
 };
 
 export type DiffViewerOptions = {
@@ -49,6 +76,8 @@ export type DiffViewerOptions = {
     dark: "pierre-dark";
   };
   diffStyle: DiffLayout;
+  diffIndicators: DiffIndicators;
+  disableLineNumbers: boolean;
   expandUnchanged: boolean;
   themeType: DiffTheme;
   backgroundEnabled: boolean;
@@ -66,11 +95,19 @@ export type DiffViewerPayload = {
 };
 
 export type RenderedDiffDocument = {
-  html: string;
-  imageHtml: string;
+  html?: string;
+  imageHtml?: string;
   title: string;
   fileCount: number;
   inputKind: DiffInput["kind"];
+  viewerRuntime: "base" | "language-pack";
+};
+
+export type DiffArtifactContext = {
+  agentId?: string;
+  sessionId?: string;
+  messageChannel?: string;
+  agentAccountId?: string;
 };
 
 export type DiffArtifactMeta = {
@@ -83,6 +120,8 @@ export type DiffArtifactMeta = {
   fileCount: number;
   viewerPath: string;
   htmlPath: string;
+  context?: DiffArtifactContext;
+  filePath?: string;
   imagePath?: string;
 };
 

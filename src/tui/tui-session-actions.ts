@@ -1,18 +1,26 @@
-import type { TUI } from "@mariozechner/pi-tui";
-import type { SessionsPatchResult } from "../gateway/protocol/index.js";
+import type { TUI } from "@earendil-works/pi-tui";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import type { SessionsPatchResult } from "../../packages/gateway-protocol/src/index.js";
+import { resolveSessionInfoModelSelection } from "../agents/model-selection-display.js";
 import {
   normalizeAgentId,
   normalizeMainKey,
   parseAgentSessionKey,
 } from "../routing/session-key.js";
 import type { ChatLog } from "./components/chat-log.js";
-import type { GatewayAgentsList, GatewayChatClient } from "./gateway-chat.js";
+import type { TuiAgentsList, TuiBackend, TuiSessionMutationResult } from "./tui-backend.js";
 import { asString, extractTextFromMessage, isCommandMessage } from "./tui-formatters.js";
+import { TUI_SESSION_LOOKUP_LIMIT } from "./tui-session-list-policy.js";
 import type { SessionInfo, TuiOptions, TuiStateAccess } from "./tui-types.js";
 
+type SessionActionBtwPresenter = {
+  clear: () => void;
+};
+
 type SessionActionContext = {
-  client: GatewayChatClient;
+  client: TuiBackend;
   chatLog: ChatLog;
+  btw: SessionActionBtwPresenter;
   tui: TUI;
   opts: TuiOptions;
   state: TuiStateAccess;
@@ -25,12 +33,15 @@ type SessionActionContext = {
   updateAutocompleteProvider: () => void;
   setActivityStatus: (text: string) => void;
   clearLocalRunIds?: () => void;
+  rememberSessionKey?: (sessionKey: string) => void | Promise<void>;
+  emptySessionInfoDefaults?: SessionInfo;
 };
 
 type SessionInfoDefaults = {
   model?: string | null;
   modelProvider?: string | null;
   contextTokens?: number | null;
+  thinkingLevels?: Array<{ id: string; label: string }>;
 };
 
 type SessionInfoEntry = SessionInfo & {
@@ -38,10 +49,51 @@ type SessionInfoEntry = SessionInfo & {
   providerOverride?: string;
 };
 
+function thinkingLevelsEqual(
+  left?: Array<{ id: string; label: string }>,
+  right?: Array<{ id: string; label: string }>,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false;
+  }
+  return left.every((level, index) => {
+    const other = right[index];
+    return other?.id === level.id && other.label === level.label;
+  });
+}
+
+function goalEquals(left: SessionInfo["goal"], right: SessionInfo["goal"]): boolean {
+  return left === right || JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function sessionInfoUiEquals(left: SessionInfo, right: SessionInfo): boolean {
+  return (
+    left.thinkingLevel === right.thinkingLevel &&
+    thinkingLevelsEqual(left.thinkingLevels, right.thinkingLevels) &&
+    left.fastMode === right.fastMode &&
+    left.verboseLevel === right.verboseLevel &&
+    left.traceLevel === right.traceLevel &&
+    left.reasoningLevel === right.reasoningLevel &&
+    left.model === right.model &&
+    left.modelProvider === right.modelProvider &&
+    left.contextTokens === right.contextTokens &&
+    left.inputTokens === right.inputTokens &&
+    left.outputTokens === right.outputTokens &&
+    left.totalTokens === right.totalTokens &&
+    left.responseUsage === right.responseUsage &&
+    left.displayName === right.displayName &&
+    goalEquals(left.goal, right.goal)
+  );
+}
+
 export function createSessionActions(context: SessionActionContext) {
   const {
     client,
     chatLog,
+    btw,
     tui,
     opts,
     state,
@@ -54,17 +106,20 @@ export function createSessionActions(context: SessionActionContext) {
     updateAutocompleteProvider,
     setActivityStatus,
     clearLocalRunIds,
+    rememberSessionKey,
+    emptySessionInfoDefaults,
   } = context;
-  let refreshSessionInfoPromise: Promise<void> = Promise.resolve();
+  let refreshSessionInfoInFlight: Promise<void> | null = null;
+  let refreshSessionInfoQueued = false;
   let lastSessionDefaults: SessionInfoDefaults | null = null;
 
-  const applyAgentsResult = (result: GatewayAgentsList) => {
+  const applyAgentsResult = (result: TuiAgentsList) => {
     state.agentDefaultId = normalizeAgentId(result.defaultId);
     state.sessionMainKey = normalizeMainKey(result.mainKey);
     state.sessionScope = result.scope ?? state.sessionScope;
     state.agents = result.agents.map((agent) => ({
       id: normalizeAgentId(agent.id),
-      name: agent.name?.trim() || undefined,
+      name: normalizeOptionalString(agent.name),
     }));
     agentNames.clear();
     for (const agent of state.agents) {
@@ -115,21 +170,16 @@ export function createSessionActions(context: SessionActionContext) {
   };
 
   const resolveModelSelection = (entry?: SessionInfoEntry) => {
-    if (entry?.modelProvider || entry?.model) {
-      return {
-        modelProvider: entry.modelProvider ?? state.sessionInfo.modelProvider,
-        model: entry.model ?? state.sessionInfo.model,
-      };
-    }
-    const overrideModel = entry?.modelOverride?.trim();
-    if (overrideModel) {
-      const overrideProvider = entry?.providerOverride?.trim() || state.sessionInfo.modelProvider;
-      return { modelProvider: overrideProvider, model: overrideModel };
-    }
-    return {
-      modelProvider: state.sessionInfo.modelProvider,
-      model: state.sessionInfo.model,
-    };
+    return resolveSessionInfoModelSelection({
+      currentProvider: state.sessionInfo.modelProvider,
+      currentModel: state.sessionInfo.model,
+      defaultProvider: lastSessionDefaults?.modelProvider,
+      defaultModel: lastSessionDefaults?.model,
+      entryProvider: entry?.modelProvider,
+      entryModel: entry?.model,
+      overrideProvider: entry?.providerOverride,
+      overrideModel: entry?.modelOverride,
+    });
   };
 
   const applySessionInfo = (params: {
@@ -137,6 +187,7 @@ export function createSessionActions(context: SessionActionContext) {
     defaults?: SessionInfoDefaults | null;
     force?: boolean;
   }) => {
+    const hasEntryUpdate = "entry" in params;
     const entry = params.entry ?? undefined;
     const defaults = params.defaults ?? lastSessionDefaults ?? undefined;
     const previousDefaults = lastSessionDefaults;
@@ -151,17 +202,12 @@ export function createSessionActions(context: SessionActionContext) {
 
     const entryUpdatedAt = entry?.updatedAt ?? null;
     const currentUpdatedAt = state.sessionInfo.updatedAt ?? null;
-    const modelChanged =
-      (entry?.modelProvider !== undefined &&
-        entry.modelProvider !== state.sessionInfo.modelProvider) ||
-      (entry?.model !== undefined && entry.model !== state.sessionInfo.model);
     if (
       !params.force &&
       entryUpdatedAt !== null &&
       currentUpdatedAt !== null &&
       entryUpdatedAt < currentUpdatedAt &&
-      !defaultsChanged &&
-      !modelChanged
+      !defaultsChanged
     ) {
       return;
     }
@@ -170,8 +216,17 @@ export function createSessionActions(context: SessionActionContext) {
     if (entry?.thinkingLevel !== undefined) {
       next.thinkingLevel = entry.thinkingLevel;
     }
+    if (entry?.thinkingLevels !== undefined || defaults?.thinkingLevels !== undefined) {
+      next.thinkingLevels = entry?.thinkingLevels ?? defaults?.thinkingLevels;
+    }
+    if (entry?.fastMode !== undefined) {
+      next.fastMode = entry.fastMode;
+    }
     if (entry?.verboseLevel !== undefined) {
       next.verboseLevel = entry.verboseLevel;
+    }
+    if (entry?.traceLevel !== undefined) {
+      next.traceLevel = entry.traceLevel;
     }
     if (entry?.reasoningLevel !== undefined) {
       next.reasoningLevel = entry.reasoningLevel;
@@ -187,6 +242,9 @@ export function createSessionActions(context: SessionActionContext) {
     }
     if (entry?.totalTokens !== undefined) {
       next.totalTokens = entry.totalTokens;
+    }
+    if (hasEntryUpdate) {
+      next.goal = entry?.goal;
     }
     if (entry?.contextTokens !== undefined || defaults?.contextTokens !== undefined) {
       next.contextTokens =
@@ -207,16 +265,26 @@ export function createSessionActions(context: SessionActionContext) {
       next.model = selection.model;
     }
 
+    const previous = state.sessionInfo;
+    const uiChanged = !sessionInfoUiEquals(previous, next);
+    if (!uiChanged && previous.updatedAt === next.updatedAt) {
+      return;
+    }
     state.sessionInfo = next;
-    updateAutocompleteProvider();
-    updateFooter();
-    tui.requestRender();
+    if (uiChanged) {
+      updateAutocompleteProvider();
+      updateFooter();
+      tui.requestRender();
+    }
   };
 
   const runRefreshSessionInfo = async () => {
     try {
       const resolveListAgentId = () => {
-        if (state.currentSessionKey === "global" || state.currentSessionKey === "unknown") {
+        if (state.currentSessionKey === "global") {
+          return state.currentAgentId;
+        }
+        if (state.currentSessionKey === "unknown") {
           return undefined;
         }
         const parsed = parseAgentSessionKey(state.currentSessionKey);
@@ -224,8 +292,10 @@ export function createSessionActions(context: SessionActionContext) {
       };
       const listAgentId = resolveListAgentId();
       const result = await client.listSessions({
-        includeGlobal: false,
-        includeUnknown: false,
+        limit: TUI_SESSION_LOOKUP_LIMIT,
+        search: state.currentSessionKey,
+        includeGlobal: state.currentSessionKey === "global",
+        includeUnknown: state.currentSessionKey === "unknown",
         agentId: listAgentId,
       });
       const normalizeMatchKey = (key: string) => parseAgentSessionKey(key)?.rest ?? key;
@@ -252,15 +322,30 @@ export function createSessionActions(context: SessionActionContext) {
     }
   };
 
-  const refreshSessionInfo = async () => {
-    refreshSessionInfoPromise = refreshSessionInfoPromise.then(
-      runRefreshSessionInfo,
-      runRefreshSessionInfo,
-    );
-    await refreshSessionInfoPromise;
+  const drainRefreshSessionInfo = async () => {
+    do {
+      // Many TUI paths ask for the same session snapshot at once; keep one in-flight
+      // lookup and at most one follow-up so bursts do not queue stale backend calls.
+      refreshSessionInfoQueued = false;
+      await runRefreshSessionInfo();
+    } while (refreshSessionInfoQueued);
   };
 
-  const applySessionInfoFromPatch = (result?: SessionsPatchResult | null) => {
+  const refreshSessionInfo = async () => {
+    if (refreshSessionInfoInFlight) {
+      refreshSessionInfoQueued = true;
+      await refreshSessionInfoInFlight;
+      return;
+    }
+    refreshSessionInfoInFlight = drainRefreshSessionInfo().finally(() => {
+      refreshSessionInfoInFlight = null;
+    });
+    await refreshSessionInfoInFlight;
+  };
+
+  const applySessionInfoFromPatch = (
+    result?: SessionsPatchResult | TuiSessionMutationResult | null,
+  ) => {
     if (!result?.entry) {
       return;
     }
@@ -281,23 +366,54 @@ export function createSessionActions(context: SessionActionContext) {
     applySessionInfo({ entry, force: true });
   };
 
+  const clearDisplayedSession = (key = state.currentSessionKey) => {
+    chatLog.clearAll();
+    btw.clear();
+    chatLog.addSystem(`session ${key}`);
+    state.historyLoaded = true;
+    void rememberSessionKey?.(key);
+    tui.requestRender();
+  };
+
+  const applySessionMutationResult = (result?: TuiSessionMutationResult | null): boolean => {
+    if (!result?.entry) {
+      return false;
+    }
+    if (result.key && result.key !== state.currentSessionKey) {
+      updateAgentFromSessionKey(result.key);
+      state.currentSessionKey = result.key;
+      updateHeader();
+    }
+    const sessionId = result.entry.sessionId;
+    state.currentSessionId = typeof sessionId === "string" ? sessionId : null;
+    applySessionInfoFromPatch(result);
+    clearDisplayedSession();
+    return true;
+  };
+
   const loadHistory = async () => {
     try {
       const history = await client.loadHistory({
         sessionKey: state.currentSessionKey,
+        ...(state.currentSessionKey === "global" ? { agentId: state.currentAgentId } : {}),
         limit: opts.historyLimit ?? 200,
       });
       const record = history as {
         messages?: unknown[];
         sessionId?: string;
         thinkingLevel?: string;
+        fastMode?: boolean;
         verboseLevel?: string;
+        traceLevel?: string;
       };
       state.currentSessionId = typeof record.sessionId === "string" ? record.sessionId : null;
       state.sessionInfo.thinkingLevel = record.thinkingLevel ?? state.sessionInfo.thinkingLevel;
+      state.sessionInfo.fastMode = record.fastMode ?? state.sessionInfo.fastMode;
       state.sessionInfo.verboseLevel = record.verboseLevel ?? state.sessionInfo.verboseLevel;
+      state.sessionInfo.traceLevel = record.traceLevel ?? state.sessionInfo.traceLevel;
       const showTools = (state.sessionInfo.verboseLevel ?? "off") !== "off";
       chatLog.clearAll();
+      btw.clear();
       chatLog.addSystem(`session ${state.currentSessionKey}`);
       for (const entry of record.messages ?? []) {
         if (!entry || typeof entry !== "object") {
@@ -349,6 +465,7 @@ export function createSessionActions(context: SessionActionContext) {
         }
       }
       state.historyLoaded = true;
+      void rememberSessionKey?.(state.currentSessionKey);
     } catch (err) {
       chatLog.addSystem(`history failed: ${String(err)}`);
     }
@@ -361,25 +478,90 @@ export function createSessionActions(context: SessionActionContext) {
     updateAgentFromSessionKey(nextKey);
     state.currentSessionKey = nextKey;
     state.activeChatRunId = null;
+    state.pendingChatRunId = null;
+    state.pendingOptimisticUserMessage = false;
+    setActivityStatus("idle");
     state.currentSessionId = null;
+    // Session keys can move backwards in updatedAt ordering; drop previous session freshness
+    // so refresh data for the newly selected session isn't rejected as stale.
+    state.sessionInfo.updatedAt = null;
     state.historyLoaded = false;
     clearLocalRunIds?.();
+    btw.clear();
     updateHeader();
     updateFooter();
     await loadHistory();
   };
 
-  const abortActive = async () => {
-    if (!state.activeChatRunId) {
-      chatLog.addSystem("no active run");
+  const setEmptySession = async (rawKey: string) => {
+    const nextKey = resolveSessionKey(rawKey);
+    updateAgentFromSessionKey(nextKey);
+    state.currentSessionKey = nextKey;
+    state.activeChatRunId = null;
+    state.pendingChatRunId = null;
+    state.pendingOptimisticUserMessage = false;
+    setActivityStatus("idle");
+    state.currentSessionId = null;
+    const defaults = lastSessionDefaults;
+    state.sessionInfo = {
+      ...emptySessionInfoDefaults,
+      modelProvider: defaults?.modelProvider ?? undefined,
+      model: defaults?.model ?? undefined,
+      contextTokens: defaults?.contextTokens ?? null,
+      thinkingLevels: defaults?.thinkingLevels ?? emptySessionInfoDefaults?.thinkingLevels,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      goal: undefined,
+      updatedAt: null,
+      displayName: undefined,
+    };
+    clearLocalRunIds?.();
+    updateHeader();
+    updateAutocompleteProvider();
+    updateFooter();
+    clearDisplayedSession();
+  };
+
+  const abortActive = async (params?: { preferActive?: boolean }) => {
+    if (
+      opts.local === true &&
+      state.activityStatus === "finishing context" &&
+      !params?.preferActive &&
+      !state.pendingChatRunId
+    ) {
+      chatLog.addSystem("agent is finishing context; wait for it to finish before aborting");
       tui.requestRender();
       return;
     }
+    const runIds =
+      params?.preferActive && state.activeChatRunId && state.pendingChatRunId
+        ? [state.pendingChatRunId, state.activeChatRunId]
+        : [
+            !params?.preferActive && state.activeChatRunId && state.pendingChatRunId
+              ? state.pendingChatRunId
+              : (state.activeChatRunId ?? state.pendingChatRunId ?? null),
+          ].filter((runId) => runId !== null);
+    if (runIds.length === 0) {
+      chatLog.addSystem("no active run", { coalesceConsecutive: true });
+      tui.requestRender();
+      return;
+    }
+    const abortsPendingRun = Boolean(
+      state.pendingChatRunId && runIds.includes(state.pendingChatRunId),
+    );
     try {
-      await client.abortChat({
-        sessionKey: state.currentSessionKey,
-        runId: state.activeChatRunId,
-      });
+      for (const runId of runIds) {
+        await client.abortChat({
+          sessionKey: state.currentSessionKey,
+          ...(state.currentSessionKey === "global" ? { agentId: state.currentAgentId } : {}),
+          runId,
+        });
+      }
+      state.pendingChatRunId = null;
+      if (abortsPendingRun) {
+        state.pendingOptimisticUserMessage = false;
+      }
       setActivityStatus("aborted");
     } catch (err) {
       chatLog.addSystem(`abort failed: ${String(err)}`);
@@ -393,8 +575,10 @@ export function createSessionActions(context: SessionActionContext) {
     refreshAgents,
     refreshSessionInfo,
     applySessionInfoFromPatch,
+    applySessionMutationResult,
     loadHistory,
     setSession,
+    setEmptySession,
     abortActive,
   };
 }

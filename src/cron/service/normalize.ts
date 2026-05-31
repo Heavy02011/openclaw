@@ -1,3 +1,4 @@
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { truncateUtf16Safe } from "../../utils.js";
 import type { CronPayload } from "../types.js";
@@ -13,14 +14,6 @@ export function normalizeRequiredName(raw: unknown) {
   return name;
 }
 
-export function normalizeOptionalText(raw: unknown) {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const trimmed = raw.trim();
-  return trimmed ? trimmed : undefined;
-}
-
 function truncateText(input: string, maxLen: number) {
   if (input.length <= maxLen) {
     return input;
@@ -29,25 +22,14 @@ function truncateText(input: string, maxLen: number) {
 }
 
 export function normalizeOptionalAgentId(raw: unknown) {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const trimmed = raw.trim();
+  const trimmed = normalizeOptionalString(raw);
   if (!trimmed) {
     return undefined;
   }
   return normalizeAgentId(trimmed);
 }
 
-export function normalizeOptionalSessionKey(raw: unknown) {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const trimmed = raw.trim();
-  return trimmed || undefined;
-}
-
-export function inferLegacyName(job: {
+export function inferCronJobName(job: {
   schedule?: { kind?: unknown; everyMs?: unknown; expr?: unknown };
   payload?: { kind?: unknown; text?: unknown; message?: unknown };
 }) {
@@ -81,7 +63,7 @@ export function inferLegacyName(job: {
 
 export function normalizePayloadToSystemText(payload: CronPayload) {
   if (payload.kind === "systemEvent") {
-    return payload.text.trim();
+    return typeof payload.text === "string" ? payload.text.trim() : "";
   }
-  return payload.message.trim();
+  return typeof payload.message === "string" ? payload.message.trim() : "";
 }
